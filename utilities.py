@@ -208,15 +208,15 @@ import matplotlib.ticker as ticker
 
 # Plotting, Logs
 class TrainingStats:
-    def __init__(self, folder_path: str, save_every: int = 0):
+    def __init__(self, folder_path: str, save_period: int = 0):
         self.data: Dict[str, Dict[int, List[float]]] = defaultdict(lambda: defaultdict(list))
         self.folder_path = folder_path
-        self.save_every = save_every
+        self.save_period = save_period
         os.makedirs(folder_path, exist_ok=True)
 
     def log(self, hap_id: int, label: str, value: float, title: Optional[str] = None):
         self.data[label][hap_id].append(value)
-        if self.save_every != 0 and len(self.data[label][hap_id]) % self.save_every == 0:
+        if self.save_period != 0 and len(self.data[label][hap_id]) % self.save_period == 0:
             self._save_series(label, title)
 
     def plot_all(self):
@@ -319,7 +319,7 @@ class TrainingStats:
         plt.savefig(os.path.join(self.folder_path, fname))
         plt.close()
 
-    def plot_hap_sat_3d_interactive(self, sat_positions:np.ndarray, hap_positions:np.ndarray, sat_trajectories:list[np.ndarray]=None, filename="3d_plot.html"):
+    def plot_system(self, sat_positions:np.ndarray, hap_positions:np.ndarray, sat_trajectories:list[np.ndarray]=None, filename="3d_plot.html"):
         """
         sat_positions      : np.ndarray (N, 3)
         hap_positions      : np.ndarray (M, 3)

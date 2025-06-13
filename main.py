@@ -4,33 +4,27 @@ from keras.datasets import mnist, cifar10
 from keras.losses import SparseCategoricalCrossentropy
 from keras.optimizers import Adam
 
-from config import SimConfig, config_gpu_memory_limit
+from config import SimConfig, log_config
 from utilities import add_ber_noise, build_dnn_model_mnist, build_cnn_model_cifar10, random_non_iid, FedproxLoss
 from utilities import rodrigues_rotation, generate_random_unit_vector, check_position
 from utilities import shannon_capacity_bps, fspl_db, calc_snr_ber, calculate_model_size_MB
 from utilities import TrainingStats
 
 import math
-import os
 from typing import cast
 from datetime import datetime
 
 cfg = SimConfig()
 
-if cfg.model_type == "dnn":
-    build_model = build_dnn_model_mnist
-elif cfg.model_type == "cnn":
-    build_model = build_cnn_model_cifar10
-
-
 class FedHAP:
-    def __init__(self, data:list[tuple], folder_name:str):
+    def __init__(self, data:list[tuple], folder_path:str, build_model_fn):
         self.data = data
-        self.folder_name = folder_name
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        self.folder_path = folder_path
 
         # Building the model for ML
         # Using the shared model to save RAM, for every training, using this model instance, only passing the weight
-        self.center_model = build_model()
+        self.center_model = build_model_fn()
         global_weights = self.center_model.get_weights()
         size_MB = calculate_model_size_MB(global_weights)
         self.model_size_bits = size_MB * 8 * 1024 * 1024
@@ -245,11 +239,7 @@ class FedHAP:
         return model_dict
 
     def run_system(self, rounds:int, epochs:int, inter_hap_aggregation="baseline"):
-        print(f"running with {inter_hap_aggregation} inter-HAP aggregation")
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        folder_path = os.path.join(self.folder_name, f"{inter_hap_aggregation}_{timestamp}")
-        stats = TrainingStats(folder_path = folder_path)
-
+        stats = TrainingStats(folder_path = self.folder_path)
         (x_train, y_train), (x_test, y_test) = self.data
 
         for r in range(rounds):
@@ -285,14 +275,14 @@ class FedHAP:
             elif inter_hap_aggregation == "mutual":
                 transmitted_models_dict = self.mutual_aggregation(1e3, 2)
             else:
-                print(f"Wrong inter_hap_aggregation, Using Baseline")
+                print(f"[DEBUG] Wrong inter_hap_aggregation, Using Baseline")
                 transmitted_models_dict = self.baseline_aggregation()
 
             for hap in self.haps:
                 if hap.hap_id in transmitted_models_dict:
                     hap.last_weights = transmitted_models_dict[hap.hap_id]
                 else:
-                    print(f"HAP {hap.hap_id} is offline, it didn't attend to the inter-HAP aggregation")
+                    print(f"[DEBUG] HAP {hap.hap_id} is offline, it didn't attend to the inter-HAP aggregation")
 
             for hap in self.haps:
                 self.center_model.set_weights(hap.last_weights)
@@ -302,8 +292,14 @@ class FedHAP:
 
         # log output
         for h in self.haps:
-            print(f"Number of update of HAP {h.hap_id} : {h.accu_num_sat_comm}")
+            print(f"[SUMMARY] Number of update of HAP {h.hap_id} : {h.accu_num_sat_comm}")
         stats.plot_all()
+
+        # system 3d plot
+        sat_positions = np.array([sat.pos for sat in self.sats])
+        hap_positions = np.array([hap.pos for hap in self.haps])
+        sat_trajectories = [sat.trajectories for sat in self.sats]
+        stats.plot_system(sat_positions, hap_positions, sat_trajectories)
 
 class SAT:
     def __init__(self, sat_id, initial_weights, train_data:tuple):
@@ -477,7 +473,7 @@ class HAP:
     
     def aggregate_models(self):
         if len(self.weights_buffer) == 0:
-            print("This round of aggregation did nothings(weights is empty)")
+            print("[INFO] This round of aggregation did nothings(weights is empty)")
             return
         
         self.weights_buffer.append(self.last_weights)
@@ -505,17 +501,26 @@ class HAP:
 import multiprocessing as mp
 import tensorflow as tf
 
-def run_exp(mode: str, gpu_mode="auto"):
-    if gpu_mode == "gpu":
+def run_exp(mode: str, gpu_mode="auto", model_type=None, dataset_type=None, rounds=None, epochs=None):
+    cfg.model_type = model_type if model_type else cfg.model_type
+    cfg.dataset_type = dataset_type if dataset_type else cfg.dataset_type
+    cfg.rounds = rounds if rounds else cfg.rounds
+    cfg.epochs = epochs if epochs else cfg.epochs
+
+    print(f"[INFO] Aggregation: {mode}")
+    print(f"[INFO] Device Mode: {gpu_mode}")
+    print(f"[INFO] Model: {cfg.model_type}, Dataset: {cfg.dataset_type}")
+    print(f"[INFO] Rounds: {cfg.rounds}, Epochs: {cfg.epochs}")
+    if gpu_mode == "gpu-divide":
         gpus = tf.config.list_physical_devices('GPU')
         if gpus:
-            tf.config.set_logical_device_configuration(gpus[0], [tf.config.LogicalDeviceConfiguration(memory_limit=4096)])
-        print("dividing VRAM on a single gpu")
+            tf.config.set_logical_device_configuration(gpus[0], [tf.config.LogicalDeviceConfiguration(memory_limit=cfg.optional_vram_limit)])
+        print("[INFO] dividing VRAM on a single gpu")
     elif gpu_mode == "cpu":
         tf.config.set_visible_devices([], "GPU")
-        print(f"[{mode}] forced to CPU only")
+        print(f"[INFO] [{mode}] forced to CPU only")
     elif gpu_mode == "auto":
-        print(f"[{mode}] using default tensorflow GPU config")
+        print(f"[INFO] [{mode}] using default tensorflow GPU config")
 
     # Load dataset
     if cfg.dataset_type == "mnist":
@@ -526,27 +531,43 @@ def run_exp(mode: str, gpu_mode="auto"):
         (x_train, y_train), (x_test, y_test) = cifar10.load_data()
         x_train = x_train.astype("float32") / 255.0
         x_test = x_test.astype("float32") / 255.0
-
+    else:
+        raise ValueError("[ERROR] Unsupported dataset")
+    
     data = [(x_train, y_train), (x_test, y_test)]
-    fedhap = FedHAP(data = data, folder_name=f"{cfg.log_dir}/{mode}")
 
+    # Set model
+    if cfg.model_type == "dnn":
+        build_model_fn = build_dnn_model_mnist
+    elif cfg.model_type == "cnn":
+        build_model_fn = build_cnn_model_cifar10
+    else:
+        raise ValueError("[ERROR] Unsupported model type")
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    folder_path = f"{cfg.log_dir}/{mode}_{timestamp}"
+
+    log_config(cfg=cfg, folder_path=folder_path)
+    fedhap = FedHAP(data = data, folder_path=folder_path, build_model_fn=build_model_fn)
     try:
         fedhap.run_system(rounds=cfg.rounds, epochs=cfg.epochs, inter_hap_aggregation=mode)
     except Exception as e:
-        print(f"[{mode}] crash: {e}")
+        print(f"[ERROR] [{mode}] crash: {e}")
 
+import argparse
 if __name__ == "__main__":
     mp.set_start_method("spawn", force=True)
-    
-    gpu_modes = {"mutual":"auto"}   # inter-HAP aggregation method : GPU/CPU mode 
-    procs = []
-    #p.start
-    for mode in gpu_modes:
-        p = mp.Process(target=run_exp, args=(mode, gpu_modes[mode]))
-        p.start()
-        procs.append(p)
-    # p.join
-    for p in procs:
-        p.join()
-        print(f"{p.name} exited with code {p.exitcode}")
+    parser = argparse.ArgumentParser(description="FedHAP Simulation")
+    parser.add_argument("--aggregation", type=str, choices=["baseline", "mutual"], default="baseline")
+    parser.add_argument("--device", type=str, choices=["auto", "cpu", "gpu-divide"], default="auto")
+    parser.add_argument("--model", type=str, choices=["dnn", "cnn"], default="dnn")
+    parser.add_argument("--dataset", type=str, choices=["mnist", "cifar10"], default="mnist")
+    parser.add_argument("--rounds", type=int, default=None)
+    parser.add_argument("--epochs", type=int, default=None)
+    args = parser.parse_args()
 
+    p = mp.Process(target=run_exp, args=(args.aggregation, args.device, args.model, args.dataset, args.rounds, args.epochs))
+    p.start()
+    p.join()
+
+#指令範例 python main.py --aggregation mutual --device auto --model dnn --dataset mnist --rounds 10 --epochs 5

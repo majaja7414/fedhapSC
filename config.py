@@ -7,7 +7,7 @@ class SimConfig:
     num_haps: int = 5
     sats_per_hap: int = 3
     rounds: int = 10
-    epochs: int = 10
+    epochs: int = 5
     step_length: int = 1
     aggregation_dist_constant: float = 2.5e3
     log_dir: str = "exp_log"
@@ -50,18 +50,15 @@ class SimConfig:
     noise_figure_db: float = 3.0
     system_loss_db: float = 2.0
 
-import tensorflow as tf
+    # others
+    optional_vram_limit: int = 4096 # MB
 
-def config_gpu_memory_limit(memory_limit_mb=3000):
-    gpus = tf.config.experimental.list_physical_devices("GPU")
-    tf.config.experimental.set_memory_growth(gpus[0], True)
-    if gpus:
-        try:
-            tf.config.experimental.set_virtual_device_configuration(
-                gpus[0],
-                [tf.config.experimental.VirtualDeviceConfiguration(memory_limit=memory_limit_mb)]
-            )
-            logical_gpus = tf.config.experimental.list_logical_devices("GPU")
-            print(f"[GPU] {len(gpus)} Physical, {len(logical_gpus)} Logical (limit {memory_limit_mb} MB)")
-        except RuntimeError as e:
-            print(f"[GPU config error] {e}")
+import os
+def log_config(cfg: SimConfig, folder_path: str):
+    config_dict = vars(cfg)
+    os.makedirs(folder_path, exist_ok=True)
+    file_path = os.path.join(folder_path, "exp_config.txt")
+
+    with open(file_path, "w") as f:
+        for key, value in config_dict.items():
+            f.write(f"{key}: {value}\n")

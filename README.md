@@ -1,6 +1,6 @@
 # 高空平台結合LEO衛星之聯邦學習 - 基於FSPL的傳輸與聚合策略
 
-本專題模擬高空平台（HAP）與低軌道衛星（LEO-SAT）組成之聯邦學習架構，聚焦於模型在傳輸通道中受 FSPL 與 BER 影響下的傳送與聚合策略。
+本專題模擬高空平台（HAP）與低軌道衛星（LEO-SAT）組成之聯邦學習架構，聚焦於模型在傳輸通道中受FSPL影響下的傳送與聚合策略。
 
 ---
 
@@ -33,7 +33,8 @@ python main.py --aggregation [baseline|mutual] --device [auto|cpu|gpu-divide] --
 python main.py --aggregation mutual --device auto --model dnn --dataset mnist --rounds 10 --epochs 10
 ```
 
-執行結果包含測試準確率、loss、設定，自動產生時間和檔名存於 `exp_log/` 下
+執行結果包含測試準確率、loss、設定，自動產生時間和檔名存於 `exp_log/` 下  
+`exp_log_example`為部分歷史實驗數據供參考用，子目錄分類如tx20表示20dbm的天線發射功率
 
 ---
 

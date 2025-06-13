@@ -1,0 +1,25 @@
+Experiment Parameters
+TX_POWER_DBM             : 25
+INTER_HAP_AGGREGATION    : mutual
+MODEL_TYPE               : dnn
+DATASET_TYPE             : mnist
+NUM_HAPS                 : 5
+SATELLITES_PER_HAP       : 8
+ROUNDS                   : 30
+EPOCHS                   : 1
+NON_IID_NUMBER_MAX       : 3
+NON_IID_NUMBER_MIN       : 8
+AGGREGATION_DIST_CONSTANT: 2500.0
+BER                      : 0.0001
+BANDWIDTH_HZ             : 1000000.0
+FSPL_MAX_DB              : 184.4121416531524
+HAP_ALTITUDE             : 20.0
+SAT_ALT_OPTION_1         : 500.0
+SAT_ALT_OPTION_2         : 1000.0
+TOTAL_STEPS              : 6297
+STEP_LENGTH              : 1
+CAPACITY_MODE            : bpsk
+FIXED_CAPACITY_BPS       : (1000000.0,)
+MODULATION_EFFICIENCY    : 0.9
+RANDOM_SEED              : 17
+=== END ===
